@@ -1,0 +1,827 @@
+/* ── TOKENS ─────────────────────────────────────────── */
+:root {
+  --cream:   #F5F0E8;
+  --blue:    #C8D8E8;
+  --pink:    #E8CFC8;
+  --grey:    #4A4A4A;
+  --dark:    #2B2B2B;
+  --white:   #FFFFFF;
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-hand:    'Caveat', cursive;
+}
+
+/* ── BASE ───────────────────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-display);
+  background-color: var(--white);
+  color: var(--dark);
+}
+
+/* ══ PHOTO BOOTH (breathing.html) ═══════════════════ */
+/* Only used by the photo booth page. Class names are
+   unique to that page, so nothing here affects the
+   home page, timer or task manager.                  */
+
+.booth-title {
+  font-family: var(--font-hand);
+  font-size: 46px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 4px;
+}
+.booth-sub {
+  text-align: center;
+  color: var(--grey);
+  font-size: 15px;
+  margin-bottom: 36px;
+}
+
+
+/* ── camera stage ─────────────────────────────────── */
+
+/* THE CAMERA STAGE
+   'position: relative' is essential — every overlay below (countdown,
+   flash, shot counter) is positioned absolutely INSIDE this box, and
+   absolute positioning anchors to the nearest positioned ancestor.
+   'aspect-ratio: 1/1' forces a perfect square regardless of screen
+   width, so the preview shows exactly the framing you'll capture.
+   'overflow: hidden' clips the video's cropped edges to the rounded
+   corners instead of letting them poke out.                          */
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;               /* square, matches the output */
+  border-radius: 24px;
+  overflow: hidden;
+  background: #2b2b2b;
+  border: 6px solid var(--white);
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+}
+
+/* THE VIDEO FEED
+   Webcams output 4:3 or 16:9, never square. 'object-fit: cover' scales
+   the feed until it fills the square box and crops the overflow — the
+   same auto-crop idea as background-size: cover, but for media
+   elements. Without it the video would squash and look distorted.
+   'scaleX(-1)' flips it horizontally so it behaves like a mirror;
+   raising your right hand moves the right side of the screen. The
+   capture code applies the same flip so photos match the preview.     */
+.stage video {
+  width: 100%; height: 100%;
+  object-fit: cover;                 /* auto-crop the feed to the square */
+  transform: scaleX(-1);             /* mirror, like a real mirror */
+  display: block;
+}
+/* before the camera starts, hide the empty black video element so the
+   '📸 Tap Start camera' message shows through instead */
+.stage.idle video { opacity: 0; }
+
+.stage-msg {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 10px; text-align: center; padding: 24px;
+  color: #fff; font-size: 15px;
+}
+.stage-msg .big { font-size: 44px; }
+.stage.live .stage-msg { display: none; }
+
+/* countdown */
+.countdown {
+  position: absolute; inset: 0;
+  display: none;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,.35);
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 150px;
+  color: #fff;
+  text-shadow: 0 4px 18px rgba(0,0,0,.4);
+}
+.countdown.show { display: flex; }
+.countdown span { animation: pop .9s ease-out; }
+@keyframes pop {
+  0%   { transform: scale(.3); opacity: 0; }
+  35%  { transform: scale(1.15); opacity: 1; }
+  60%  { transform: scale(1); }
+  100% { transform: scale(.85); opacity: .15; }
+}
+
+/* SHUTTER FLASH — full screen.
+   'position: fixed' pins it to the window rather than the camera box,
+   so the whole display turns white. z-index 400 puts it above the nav
+   (100), overlay (150), side menu (200) and toast (300).
+   'pointer-events: none' means clicks pass straight through it.
+
+   This doubles as a light source: a white screen at arm's length
+   genuinely brightens your face, which is why the JS holds the flash
+   for a moment BEFORE capturing rather than firing them together.     */
+.booth-flash {
+  position: fixed; inset: 0;
+  background: #fff; opacity: 0; pointer-events: none;
+  z-index: 400;
+}
+.booth-flash.fire { animation: flashAnim .7s ease-out; }
+/* Holds at full white for the first 45% (~315ms) so the camera has
+   time to meter the extra light, then fades out.                     */
+@keyframes flashAnim {
+  0%   { opacity: 1; }
+  45%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.shot-pip {
+  position: absolute; top: 14px; left: 14px;
+  background: rgba(0,0,0,.55); color: #fff;
+  font-size: 13px; font-weight: 600;
+  padding: 5px 12px; border-radius: 999px;
+  opacity: 0; transition: opacity .25s;
+}
+.shot-pip.show { opacity: 1; }
+
+/* ── controls ─────────────────────────────────────── */
+
+.bth {
+  font-family: var(--font-display);
+  font-weight: 600; font-size: 15px;
+  border: none; border-radius: 999px;
+  padding: 13px 24px; cursor: pointer;
+  transition: transform .15s, box-shadow .15s, opacity .15s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.bth:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.14); }
+.bth:disabled { opacity: .45; cursor: not-allowed; }
+.bth-primary { background: var(--dark);  color: #fff; flex: 1 1 auto; justify-content: center; }
+.bth-soft    { background: var(--white); color: var(--dark); border: 1px solid #ddd; }
+.chip {
+  font-family: var(--font-display); font-size: 13px; font-weight: 600;
+  border: 1px solid #ddd; background: var(--white); color: var(--dark);
+  border-radius: 999px; padding: 8px 15px; cursor: pointer;
+  transition: .15s;
+}
+.chip:hover { border-color: var(--dark); }
+.chip[aria-pressed="true"] { background: var(--dark); color: #fff; border-color: var(--dark); }
+
+/* ── sticker tray ─────────────────────────────────── */
+.stickers { display: flex; flex-wrap: wrap; gap: 8px; }
+.sticker-tray { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
+
+.sticker-tray button {
+  width: 52px; height: 52px; padding: 6px;
+  background: var(--white); border: 1px solid #ddd;
+  border-radius: 12px; cursor: pointer; transition: .15s;
+}
+.sticker-tray button:hover { transform: translateY(-2px); border-color: var(--dark); }
+/* pointer-events: none so a click always registers on the button,
+   never on the image inside it */
+.sticker-tray img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+/* .bth sets display:inline-flex, which would otherwise beat the plain
+   'hidden' attribute and leave the button visible. This restores it.  */
+
+/* ── photo strip ──────────────────────────────────── */
+
+/* 'position: relative' turns the strip into the coordinate system for
+   placed stickers — their percentage positions are measured against
+   this box, which is what lets the same numbers map onto the download
+   canvas at a completely different pixel size.                        */
+.strip {
+  position: relative;
+  background: var(--white);
+  border-radius: 18px;
+  padding: 18px 18px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+/* A PLACED STICKER
+   left/top are percentages of the strip, and translate(-50%,-50%)
+   shifts the sticker so those percentages point at its CENTRE rather
+   than its top-left corner — much more intuitive to drag.
+   'touch-action: none' stops phones scrolling the page mid-drag.      */
+.placed {
+  position: absolute;
+  /* set by script.js from STICKER_W so the preview and the downloaded
+     PNG can never disagree. The 22% is only a fallback.              */
+  width: var(--sticker-w, 22%);
+
+  /* translateZ(0) forces the sticker onto its own compositing layer.
+     Without it, dragging an element that has a drop-shadow leaves
+     smears of the old shadow behind — the browser repaints the new
+     position but doesn't always clear the area the shadow used to
+     cover. On desktop a scroll cleans it up; on phones it doesn't.
+     will-change tells the browser this element is about to move, so
+     it prepares the layer before the first drag rather than mid-drag. */
+  transform: translate(-50%, -50%) translateZ(0);
+  will-change: transform, left, top;
+
+  cursor: grab;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  z-index: 5;
+  filter: drop-shadow(0 2px 5px rgba(0,0,0,.25));
+}
+
+/* belt and braces: drop the shadow entirely while the sticker is
+   actually moving, then bring it back on release */
+.placed.grabbing {
+  cursor: grabbing;
+  filter: none;
+}
+/* ONE PHOTO SLOT
+   Four of these stack vertically to form the strip. Each is locked
+   square by aspect-ratio, so the strip keeps its shape whether it
+   holds photos or empty placeholders. The diagonal stripe pattern is
+   the empty state — it disappears once an <img> is dropped in.       */
+.slot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;               /* square layout */
+  border-radius: 10px;
+  overflow: hidden;
+  background: repeating-linear-gradient(45deg, #f2f0eb, #f2f0eb 8px, #ebe8e2 8px, #ebe8e2 16px);
+  display: flex; align-items: center; justify-content: center;
+}
+/* Photos are already cropped square by the canvas code, so object-fit
+   here is a safety net — if anything non-square ever lands in a slot
+   it gets cropped rather than stretched.                             */
+.slot img {
+  width: 100%; height: 100%;
+  object-fit: cover;                 /* auto-crop to the square */
+  display: block;
+  animation: dropIn .5s cubic-bezier(.2,.9,.3,1.4) both;
+}
+@keyframes dropIn {
+  0%   { opacity: 0; transform: translateY(-14px) scale(.9) rotate(-3deg); }
+  100% { opacity: 1; transform: none; }
+}
+.slot-num {
+  font-family: var(--font-hand); font-size: 30px; color: #c9c5bd;
+}
+.slot .retake {
+  position: absolute; right: 8px; bottom: 8px;
+  background: rgba(0,0,0,.6); color: #fff;
+  border: none; border-radius: 999px;
+  font-size: 12px; font-weight: 600; padding: 6px 12px;
+  cursor: pointer; opacity: 0; transition: opacity .2s;
+}
+.slot:hover .retake { opacity: 1; }
+
+.strip-foot {
+  text-align: center;
+  font-family: var(--font-hand);
+  font-size: 20px; color: var(--grey);
+  padding-top: 2px;
+}
+
+.booth-toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
+  background: var(--dark); color: #fff;
+  padding: 12px 22px; border-radius: 999px; font-size: 14px;
+  opacity: 0; pointer-events: none; transition: .3s; z-index: 300;
+  max-width: 90vw; text-align: center;
+}
+.booth-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 767px) {
+  .booth-title { font-size: 34px; }
+  .countdown { font-size: 110px; }
+}
+
+/* ══ INSTALL BANNER (PWA) ════════════════════════════ */
+/* Shown only on iOS in Safari, because iOS gives no built-in
+   install prompt — the user has to do it manually.       */
+.install-hint {
+  position: fixed; left: 12px; right: 12px; bottom: 12px;
+  z-index: 350;
+  background: var(--white);
+  border: 1px solid #e3dfd7;
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.16);
+  display: flex; align-items: center; gap: 12px;
+  font-size: 14px; line-height: 1.4;
+  animation: hintIn .4s ease both;
+}
+@keyframes hintIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.install-hint img { width: 40px; height: 40px; border-radius: 10px; flex: 0 0 auto; }
+.install-hint p   { margin: 0; flex: 1; color: var(--dark); }
+.install-hint b   { font-weight: 700; }
+.install-hint button {
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; color: #b9b5ad; padding: 4px 6px; align-self: flex-start;
+}
+
+/* ── HAND-DRAWN BOX EDGES (photo booth) ─────────────
+   Same lopsided border-radius as the task page: eight values instead
+   of four, so every corner curves differently and the edge wanders
+   like a pen line.                                                  */
+
+/* THE PHOTO STRIP — full treatment, matching the task cards.
+   Deliberately NOT rotated. Sticker dragging and the download both
+   measure this box with getBoundingClientRect(), which reports the
+   bounding box of a rotated element rather than the element itself.
+   A tilt here would quietly throw off both.                        */
+.strip {
+  border: 2px solid var(--dark);
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.08);
+}
+.strip::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2px solid var(--dark);
+  border-radius: 225px 15px 255px 15px / 15px 255px 15px 225px;
+  opacity: .22;
+  transform: rotate(-.4deg);
+  pointer-events: none;
+}
+
+/* THE CAMERA BOX — keeps its white frame, which now reads as a
+   hand-cut photo border. The drawn line uses 'outline' rather than
+   ::after because .stage has overflow: hidden to clip the video, and
+   that would crop a pseudo-element sitting outside it. An outline is
+   drawn outside the border box and isn't clipped that way.         */
+.stage {
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  outline: 2px solid var(--dark);
+  outline-offset: 0;
+}
+
+/* the four photo slots get a gentler version, so they look cut out
+   by hand without competing with the strip's own edge */
+.slot {
+  border-radius: 120px 8px 110px 8px / 8px 110px 8px 120px;
+}
+
+/* the logo is a link now — strip the default link styling so it looks
+   exactly as it did as a span, and give a small hover cue */
+.nav-logo {
+  text-decoration-line: underline;   /* keep the underline it always had */
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.nav-logo:hover { opacity: .72; }
+
+/* per-slot upload button on empty photo slots */
+.slot-upload {
+  position: absolute; left: 50%; bottom: 12px;
+  transform: translateX(-50%);
+  background: rgba(43,43,43,.72); color: #fff;
+  border: none; border-radius: 999px;
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 12px; padding: 6px 14px;
+  cursor: pointer; opacity: 0; transition: opacity .2s;
+}
+.slot:hover .slot-upload { opacity: 1; }
+/* touch devices have no hover, so keep it permanently visible there */
+@media (hover: none) {
+  .slot-upload { opacity: .9; }
+  .slot .retake { opacity: .9; }
+}
+
+/* the due chip is a button now, so it needs to look clickable */
+.due {
+  border: none;
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: filter .15s;
+  display: inline-flex; align-items: baseline; gap: 7px;
+}
+.due:hover { filter: brightness(.94); }
+.due-date { font-weight: 400; opacity: .78; }
+.due-empty {
+  background: transparent;
+  color: var(--grey);
+  border: 1px dashed #c9c5bd;
+}
+
+/* ══════════════════════════════════════════════════════
+   APP SHELL — iOS FEEL
+   Everything below is the native-app layer. It only ever
+   overrides the booth, so the rest of the HELPFUL site is
+   untouched. Added last so it wins on equal specificity.
+   ══════════════════════════════════════════════════════ */
+
+:root {
+  /* iOS's own spring curve — used by sheets, pushes and buttons.
+     Snappier out of the gate than ease-out, and it settles rather
+     than stopping dead.                                          */
+  --spring: cubic-bezier(.32,.72,0,1);
+  --hairline: rgba(0,0,0,.09);
+  --card-radius: 16px;
+  --bar-h: 78px;
+}
+
+/* ── SYSTEM CHROME ────────────────────────────────────
+   The tells that give a web page away on a phone: text that
+   selects when you hold a button, a grey flash on tap, the page
+   rubber-banding past its own end, and a 300ms delay before a
+   click registers. All four go here.                           */
+.app-body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior-y: none;        /* no pull-to-refresh, no bounce */
+  touch-action: manipulation;         /* kills the double-tap zoom delay */
+  background: var(--cream);
+}
+/* the landing page snaps section to section; an app screen must not */
+html:has(.app-body) { scroll-snap-type: none; }
+
+
+/* ── LARGE TITLE ──────────────────────────────────────
+   iOS large titles are left aligned and sit tight above their
+   content — not centred with air around them like a web hero.  */
+.app-head { max-width: 1000px; margin: 0 auto 18px; padding: 8px 4px 0; }
+.booth-title { text-align: left; font-size: 42px; line-height: 1.05; margin-bottom: 2px; }
+.booth-sub   { text-align: left; margin-bottom: 0; font-size: 14px; }
+
+/* ── CARDS ────────────────────────────────────────────
+   Grouped inset cards, the way iOS Settings and most stock apps
+   lay out a screen: white, generously rounded, a soft shadow
+   rather than a border, and a small grey label above.          */
+.stage { border-width: 0; border-radius: 20px; box-shadow: 0 8px 28px rgba(0,0,0,.16); }
+
+/* ── SEGMENTED CONTROL ────────────────────────────────
+   The iOS segmented control: one recessed grey track, the
+   selected item lifted out of it as a white pill. Six filters
+   don't fit a phone, so the track scrolls sideways and the
+   scrollbar is hidden — standard iOS behaviour.               */
+.seg {
+  display: flex; gap: 3px;
+  background: rgba(0,0,0,.05);
+  border-radius: 11px;
+  padding: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.seg::-webkit-scrollbar { display: none; }
+.seg .chip {
+  flex: 0 0 auto;
+  border: none; background: transparent;
+  border-radius: 8px; padding: 8px 14px;
+  font-size: 13px; font-weight: 600; color: var(--dark);
+  transition: background .22s var(--spring), color .22s var(--spring), transform .12s var(--spring);
+}
+.seg .chip[aria-pressed="true"] {
+  background: var(--white); color: var(--dark);
+  box-shadow: 0 1px 3px rgba(0,0,0,.14);
+}
+.seg .chip:active { transform: scale(.94); }
+
+/* ── STICKER TRAY ─────────────────────────────────────
+   One scrolling row with snap points, rather than a wrapping
+   grid that pushes the rest of the screen down.               */
+.sticker-tray {
+  flex-wrap: nowrap; overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.sticker-tray::-webkit-scrollbar { display: none; }
+.sticker-tray button {
+  flex: 0 0 auto; scroll-snap-align: start;
+  width: 58px; height: 58px; border-radius: 14px;
+  border: 1px solid var(--hairline);
+  transition: transform .14s var(--spring);
+}
+.sticker-tray button:active { transform: scale(.92); }
+
+/* ── BUTTONS ──────────────────────────────────────────
+   Touch has no hover, so the lift-on-hover effect is fenced
+   behind a hover query and a press-down scale takes over. 44px
+   is Apple's minimum tap target and it is not negotiable.      */
+.bth {
+  min-height: 44px;
+  border-radius: 13px;                /* iOS uses rounded rects, not pills */
+  transition: transform .14s var(--spring), opacity .2s;
+}
+.bth:active:not(:disabled) { transform: scale(.96); }
+@media (hover: none) {
+  .bth:hover:not(:disabled) { transform: none; box-shadow: none; }
+  .sticker-tray button:hover { transform: none; }
+  .slot .retake { opacity: 1; }       /* nothing to hover — always show */
+}
+.bth-soft { border-color: var(--hairline); }
+
+/* ── ACTION BAR ───────────────────────────────────────
+   Pinned to the bottom, translucent with the content blurring
+   through it, one hairline on top. backdrop-filter is the
+   effect iOS uses on every tab bar and toolbar.               */
+.action-bar {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  z-index: 250;
+  display: flex; gap: 8px; align-items: center;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(250,248,244,.82);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--hairline);
+}
+.action-bar .bth-primary { flex: 1 1 auto; justify-content: center; font-size: 16px; }
+.bar-secondary { flex: 0 0 auto; padding: 13px 16px; font-size: 14px; }
+
+/* the toast has to clear the bar instead of hiding behind it */
+.booth-toast { bottom: calc(var(--bar-h) + 16px + env(safe-area-inset-bottom)); }
+
+/* ── PHONE ────────────────────────────────────────────
+   One column, and the strip gets the full width rather than
+   the 320px cap the website uses.                            */
+@media (max-width: 767px) {
+  .booth-title { font-size: 36px; }
+  /* A 320px-wide strip is four square photos tall — over 1300px of
+     scrolling on a phone. Narrower keeps the whole strip glanceable;
+     the download is rendered from its own canvas at full size, so
+     this only changes the preview.                                 */
+
+}
+
+/* ── LAUNCH ───────────────────────────────────────────
+   A short fade-and-rise on first paint, so opening the app
+   feels like a screen appearing rather than a page loading.  */
+@media (prefers-reduced-motion: no-preference) {
+  .booth-page > * { animation: appIn .5s var(--spring) both; }
+  .booth-page > .booth-grid { animation-delay: .05s; }
+  .action-bar { animation: barIn .45s var(--spring) both .1s; }
+}
+@keyframes appIn { from { opacity: 0; transform: translateY(10px); } }
+@keyframes barIn { from { opacity: 0; transform: translateY(100%); } }
+
+
+/* ── STRIP LAYOUTS ────────────────────────────────────
+   The strip is a grid whose column count comes from --cols, set by
+   buildStrip() in script.js. One column is the classic booth strip,
+   two is the 3x2 sheet. The slots stay square either way, so the
+   strip's own height follows from the grid — nothing here needs to
+   know how many photos there are.
+   The footer spans every column so "HELPFUL" stays centred.        */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 1), 1fr);
+  gap: 10px;
+  align-content: start;
+}
+.strip-foot { grid-column: 1 / -1; }
+
+/* The sheet is wider than it is tall per photo, so it can afford
+   more width on screen than the single-column strip.              */
+
+
+/* ── LAYOUT PICKER ────────────────────────────────────
+   A tiny diagram of the strip inside each button, so the choice is
+   obvious without reading the label. The <i> elements are the
+   photo slots; .two switches the grid to a 3x2 sheet.             */
+.layout-opt { display: inline-flex; align-items: center; gap: 8px; }
+.layout-ico {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5px;
+  width: 9px;
+}
+.layout-ico.two { grid-template-columns: 1fr 1fr; width: 15px; }
+.layout-ico i {
+  display: block;
+  aspect-ratio: 1 / 1;
+  border-radius: 1.5px;
+  background: currentColor;
+  opacity: .45;
+}
+.layout-opt[aria-pressed="true"] .layout-ico i { opacity: 1; }
+
+
+/* ══════════════════════════════════════════════════════
+   TWO-SCREEN SHELL — Shoot -> Edit
+   Nothing scrolls. The window is divided into a header, a
+   flexible middle that shrinks to fit, and a fixed action
+   bar; the middle is the only part that gives, so the app
+   always ends exactly at the bottom of the screen.
+   ══════════════════════════════════════════════════════ */
+
+html, body { height: 100%; overflow: hidden; }
+
+.app-shell {
+  position: fixed; inset: 0;
+  overflow: hidden;
+  background-color: var(--cream);
+  background-image:
+    linear-gradient(rgba(255,255,255,.84), rgba(255,255,255,.84)),
+    url('backgroundHERO.png');
+  background-size: cover;
+  background-position: center;
+}
+
+/* ONE SCREEN
+   100dvh, not 100vh: on iOS Safari vh includes the address bar
+   that isn't there, so a vh-sized screen overflows by ~90px.
+   dvh is the height actually available right now.             */
+.screen {
+  position: absolute; inset: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding: calc(8px + env(safe-area-inset-top)) 16px 0;
+  transition: transform .42s var(--spring), opacity .3s ease;
+  will-change: transform;
+}
+/* iOS push: the next screen waits offstage to the right, the
+   one behind slides a little way left and dims, so the two
+   feel connected rather than swapped.                        */
+.screen-next    { transform: translateX(100%); opacity: 0; pointer-events: none; }
+.screen.is-current { transform: translateX(0);   opacity: 1; }
+.screen.is-behind  { transform: translateX(-22%); opacity: 0; pointer-events: none; }
+
+/* ── HEADER ─────────────────────────────────────────── */
+.screen-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 10px;
+  min-height: 44px;
+  margin-bottom: 10px;
+}
+.head-text { flex: 1 1 auto; min-width: 0; }
+.head-spacer { flex: 0 0 72px; }        /* balances the back button */
+.screen-head .booth-title { font-size: 30px; text-align: left; margin: 0; line-height: 1.05; }
+.screen-head .booth-sub   { font-size: 13px; text-align: left; margin: 0; }
+.screen-title {
+  flex: 1 1 auto; text-align: center; margin: 0;
+  font-family: var(--font-display); font-size: 16px; font-weight: 700;
+}
+.link-btn {
+  flex: 0 0 auto;
+  background: none; border: none; padding: 8px 4px;
+  font-family: var(--font-display); font-size: 16px; font-weight: 600;
+  color: var(--dark); cursor: pointer; min-width: 72px; text-align: left;
+  text-decoration: none;              /* a stray underline was leaking in */
+  transition: opacity .15s;
+}
+#toEditBtn { text-align: right; }
+.link-btn:active { opacity: .5; }
+.link-btn[hidden] { display: none; }
+
+/* ── THE FLEXIBLE MIDDLE ────────────────────────────── */
+/* min-height: 0 is the whole trick. A flex child defaults to
+   min-height: auto, which refuses to shrink below its content
+   and pushes the action bar off screen. Zero lets it give.   */
+.fit-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 2px 0;
+}
+
+/* the viewfinder: square, as big as the space allows */
+.fit-area .stage {
+  width: auto; height: auto;
+  max-width: 100%; max-height: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+/* THE STRIP, SCALED TO FIT
+   The strip is laid out at a fixed natural width with genuinely
+   square slots, then fitStrip() in script.js shrinks the whole
+   thing with one transform until it fits the space left over.
+   Scaling rather than resizing is what keeps the photos exactly
+   square at every screen height — and because the export
+   measures the strip and its slots with the same scale applied,
+   the saved PNG is unaffected.                                */
+.fit-area { overflow: hidden; position: relative; }
+/* Absolutely positioned and centred by translate, not by the grid.
+   A grid keeps an over-tall item pinned to the top edge instead of
+   centring it, which left the scaled strip hanging off the bottom;
+   taking it out of flow means the centring is exact whatever size
+   it starts at, and the container's own height stays honest.     */
+.fit-area .strip {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 300px;
+  margin: 0;
+  padding: 10px;
+  gap: 8px;
+  transform-origin: center center;
+  transform: translate(-50%, -50%) scale(1);
+  transition: transform .25s var(--spring);
+}
+.fit-area .strip-foot { font-size: 17px; padding: 2px 0 0; line-height: 1.2; }
+
+/* ── EDIT TOOLS ─────────────────────────────────────── */
+.edit-tools {
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 0 0;
+}
+.edit-tools .sticker-tray { gap: 7px; }
+.edit-tools .sticker-tray button { width: 46px; height: 46px; border-radius: 12px; }
+.tool-row { display: flex; gap: 7px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.tool-row::-webkit-scrollbar { display: none; }
+.bth.tiny {
+  flex: 0 0 auto;
+  min-height: 38px; padding: 8px 14px; font-size: 13px; border-radius: 11px;
+}
+.bth.tiny[hidden] { display: none; }
+
+/* ── ACTION BAR ─────────────────────────────────────── */
+/* Now part of the column rather than fixed to the window, so
+   it can never overlap the content above it.               */
+.action-bar {
+  position: static;
+  flex: 0 0 auto;
+  margin: 10px -16px 0;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+}
+.booth-toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+
+/* the layout picker sits inline on the shoot screen */
+.seg-inline { flex: 0 0 auto; margin-bottom: 8px; }
+
+/* ── SMALL SCREENS ──────────────────────────────────── */
+@media (max-height: 700px) {
+  .screen-head .booth-title { font-size: 24px; }
+  .screen-head .booth-sub { display: none; }
+  .edit-tools .sticker-tray button { width: 40px; height: 40px; }
+  .seg .chip { padding: 7px 12px; font-size: 12px; }
+}
+
+
+/* ── FRAMES ───────────────────────────────────────────
+   A scrolling row of swatches under the photos. Each button
+   is its own colour chip plus a label; --swatch is set from
+   the FRAMES object in script.js so a new frame never needs
+   a new CSS rule.                                          */
+.frame-row {
+  display: flex; gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1px;
+}
+.frame-row::-webkit-scrollbar { display: none; }
+
+.frame-opt {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--white);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 6px 12px 6px 7px;
+  font-family: var(--font-display); font-size: 13px; font-weight: 600;
+  color: var(--dark); cursor: pointer;
+  min-height: 40px;
+  transition: transform .14s var(--spring), border-color .2s, box-shadow .2s;
+}
+.frame-opt span {
+  width: 20px; height: 20px; border-radius: 7px;
+  background: var(--swatch, #fff);
+  border: 1px solid rgba(0,0,0,.14);
+  flex: 0 0 auto;
+}
+.frame-opt:active { transform: scale(.94); }
+.frame-opt[aria-pressed="true"] {
+  border-color: var(--dark);
+  box-shadow: inset 0 0 0 1px var(--dark);
+}
+
+/* THE ARTWORK
+   Sits over the photos and under the stickers (.placed is
+   z-index 5), matching the order the export draws them in.
+   pointer-events: none so it never eats a drag.            */
+.frame-art {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  z-index: 3;
+}
+.frame-art[hidden] { display: none; }
+
+/* the hand-drawn wobbly border belongs to the Classic frame only */
+.strip.no-doodle { border-color: transparent; }
+.strip.no-doodle::after { display: none; }
+
+@media (max-height: 700px) {
+  .frame-opt { font-size: 12px; min-height: 36px; padding: 5px 10px 5px 6px; }
+  .frame-opt span { width: 17px; height: 17px; }
+}
+
+/* The background layer sits under the photos. The slots paint their
+   own background, so a photo always covers it — which is the point.
+   z-index 0 keeps it above the strip's flat colour and below
+   everything else.                                                */
+.frame-back {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  z-index: 0;
+}
+.frame-back[hidden] { display: none; }
+

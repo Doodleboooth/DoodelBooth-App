@@ -1,0 +1,8 @@
+/* Self-hosted webfonts, so the app renders correctly with no network.
+   Files come from the @fontsource packages (SIL Open Font License). */
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400;font-display:swap;src:url('space-grotesk-latin-400-normal.woff2') format('woff2');}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:500;font-display:swap;src:url('space-grotesk-latin-500-normal.woff2') format('woff2');}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:600;font-display:swap;src:url('space-grotesk-latin-600-normal.woff2') format('woff2');}
+@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;src:url('space-grotesk-latin-700-normal.woff2') format('woff2');}
+@font-face{font-family:'Caveat';font-style:normal;font-weight:500;font-display:swap;src:url('caveat-latin-500-normal.woff2') format('woff2');}
+@font-face{font-family:'Caveat';font-style:normal;font-weight:700;font-display:swap;src:url('caveat-latin-700-normal.woff2') format('woff2');}

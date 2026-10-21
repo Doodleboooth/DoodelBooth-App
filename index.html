@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <title>Doodlebooth</title>
+
+  <!-- Bootstrap 5 — vendored locally so the app works with no network -->
+  <link href="vendor/bootstrap.min.css" rel="stylesheet" />
+
+  <!-- Self-hosted webfonts (Space Grotesk + Caveat) -->
+  <link href="fonts/fonts.css" rel="stylesheet" />
+
+  <!-- ?v=N is a cache-buster. Bump it when an edit doesn't take effect. -->
+  <link rel="stylesheet" href="style.css?v=18">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#F5F0E8">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Doodlebooth">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+</head>
+
+<body class="app-body">
+
+<!-- ══ TWO SCREENS ══════════════════════════════════════
+     Shoot, then Edit. Each one is exactly the height of the
+     window and never scrolls; script.js slides between them.
+     ════════════════════════════════════════════════════ -->
+<div class="app-shell">
+
+  <!-- ── 1. SHOOT ─────────────────────────────────────── -->
+  <section class="screen is-current" id="screenShoot">
+
+    <header class="screen-head">
+      <div class="head-text">
+        <h1 class="booth-title">Doodlebooth</h1>
+        <!-- rewritten by buildStrip() to match the chosen layout -->
+        <p class="booth-sub">Three shots, three seconds each.</p>
+      </div>
+      <!-- appears once there's something on the strip -->
+      <button class="link-btn" id="toEditBtn" hidden>Strip &rsaquo;</button>
+    </header>
+
+    <!-- LAYOUT — data-layout matches a key in LAYOUTS in script.js -->
+    <div class="seg seg-inline" role="group" aria-label="Strip layout">
+      <button class="chip layout-opt" data-layout="three" aria-pressed="true">
+        <span class="layout-ico" aria-hidden="true"><i></i><i></i><i></i></span>
+        3 photos
+      </button>
+      <button class="chip layout-opt" data-layout="six" aria-pressed="false">
+        <span class="layout-ico two" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        6 photos
+      </button>
+    </div>
+
+    <!-- the viewfinder takes whatever height is left over -->
+    <div class="fit-area">
+      <div class="stage idle" id="stage">
+        <video id="video" playsinline muted autoplay></video>
+        <div class="stage-msg" id="stageMsg">
+          <div class="big">📸</div>
+          <div id="stageMsgText">Tap <strong>Start camera</strong> to begin,<br>or upload photos instead.</div>
+        </div>
+        <div class="countdown" id="countdown"></div>
+        <div class="shot-pip" id="shotPip">Shot 1 of 3</div>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button class="bth bth-soft bar-secondary" id="uploadBtn">Upload</button>
+      <button class="bth bth-primary" id="startBtn">Start camera</button>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    </div>
+  </section>
+
+  <!-- ── 2. EDIT ──────────────────────────────────────── -->
+  <section class="screen screen-next" id="screenEdit" aria-hidden="true">
+
+    <header class="screen-head">
+      <button class="link-btn" id="backBtn">&lsaquo; Camera</button>
+      <h1 class="screen-title">Your strip</h1>
+      <span class="head-spacer"></span>
+    </header>
+
+    <!-- the strip scales itself to whatever height is left -->
+    <div class="fit-area">
+      <!-- slots are built by buildStrip() in script.js -->
+      <div class="strip" id="strip">
+        <div class="strip-foot" id="stripFoot">Doodlebooth</div>
+      </div>
+    </div>
+
+    <div class="edit-tools">
+      <div class="seg" role="group" aria-label="Filter">
+        <button class="chip" data-filter="none" aria-pressed="true">Original</button>
+        <button class="chip" data-filter="bw">B&amp;W</button>
+        <button class="chip" data-filter="warm">Warm</button>
+        <button class="chip" data-filter="cool">Cool</button>
+        <button class="chip" data-filter="pop">Pop</button>
+        <button class="chip" data-filter="dream">Dreamy</button>
+      </div>
+
+      <!-- FRAME — the buttons are built by buildFrameRow() in
+           script.js from frames/frames.json, so adding a frame
+           means editing that JSON file and nothing else. -->
+      <div class="frame-row" role="group" aria-label="Frame"></div>
+
+      <div class="sticker-tray" id="stickerTray"></div>
+
+      <div class="tool-row">
+        <button class="bth bth-soft tiny" id="stickerUploadBtn">Upload sticker</button>
+        <button class="bth bth-soft tiny" id="clearStickersBtn" hidden>Remove stickers</button>
+        <button class="bth bth-soft tiny" id="clearBtn" disabled>Clear strip</button>
+        <input type="file" id="stickerUpload" accept="image/png,image/*" multiple hidden>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button class="bth bth-primary" id="downloadBtn" disabled>Save to photos</button>
+    </div>
+  </section>
+
+</div>
+
+<!-- full-screen shutter flash, above both screens -->
+<div class="booth-flash" id="flash"></div>
+<div class="booth-toast" id="toast"></div>
+
+<!-- the frame list, loaded as a script so it works off the disk too -->
+<script src="frames/frames.js?v=27"></script>
+<script src="script.js?v=27" defer></script>
+</body>
+</html>
